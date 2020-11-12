@@ -13,17 +13,35 @@
 // limitations under the License.
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::str;
+
 use std::time::Duration;
 
 #[no_mangle]
 pub fn _start() {
     proxy_wasm::set_log_level(proxy_wasm::types::LogLevel::Trace);
-    proxy_wasm::set_http_context(|_, _| -> Box<dyn HttpContext> { Box::new(HttpAuth) });
+    proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
+        Box::new(HttpAuthRootContext {
+            config: FilterConfig {
+                auth_cluster: "".to_string(),
+                auth_host: "".to_string(),
+            },
+        })
+    });
 }
 
-struct HttpAuth;
+struct HttpAuth {
+    config: FilterConfig,
+}
+struct HttpAuthRootContext {
+    config: FilterConfig,
+}
+struct FilterConfig {
+    auth_cluster: String,
+    auth_host: String,
+}
 
 impl HttpAuth {
     fn fail(&mut self) {
@@ -39,13 +57,13 @@ impl HttpContext for HttpAuth {
     fn on_http_request_headers(&mut self, _: usize) -> Action {
         // get all the request headers
         let headers = self.get_http_request_headers();
-        log::info!("\nRequest Headers: \n{:?}\n\n", headers);
+        // log::info!("\nRequest Headers: \n{:?}\n\n", headers);
         // transform them from Vec<(String,String)> to Vec<(&str,&str)>; as dispatch_http_call needs
         // Vec<(&str,&str)>.
-        let ref_headers: Vec<(&str, &str)> = headers
-            .iter()
-            .map(|(ref k, ref v)| (k.as_str(), v.as_str()))
-            .collect();
+        // let ref_headers: Vec<(&str, &str)> = headers
+        //     .iter()
+        //     .map(|(ref k, ref v)| (k.as_str(), v.as_str()))
+        //     .collect();
 
         // Dispatch a call to the auth-cluster. Here we assume that envoy's config has a cluster
         // named auth-cluster. We send the auth cluster all our headers, so it has context to
@@ -131,5 +149,45 @@ impl Context for HttpAuth {
                 self.fail();
             }
         }
+    }
+}
+
+impl Context for HttpAuthRootContext {}
+impl RootContext for HttpAuthRootContext {
+    fn on_vm_start(&mut self, _vm_configuration_size: usize) -> bool {
+        log::info!("VM STARTED");
+        true
+    }
+
+    fn on_configure(&mut self, _plugin_configuration_size: usize) -> bool {
+        log::info!("READING CONFIG");
+
+        if self.config.auth_cluster == "" {
+            // log::info!("CONFIG EMPTY");
+            if let Some(config_bytes) = self.get_configuration() {
+                log::info!("GOT CONFIG");
+                log::info!("config: {:?}", str::from_utf8(&config_bytes));
+            // TODO: some proper error handling here
+            // let cfg: Value = serde_json::from_slice(config_bytes.as_slice()).unwrap();
+            // self.config.auth_cluster = cfg
+            //     .get("auth_cluster")
+            //     .unwrap()
+            //     .as_str()
+            //     .unwrap()
+            //     .to_string();
+            // self.config.auth_host = cfg.get("auth_host").unwrap().as_str().unwrap().to_string();
+            } else {
+                log::info!("NO CONFIG FOUND+++++++++++++++++==");
+            }
+        }
+        true
+    }
+    fn create_http_context(&self, _context_id: u32, _root_context_id: u32) -> Box<dyn HttpContext> {
+        Box::new(HttpAuth {
+            config: FilterConfig {
+                auth_cluster: self.config.auth_cluster.clone(),
+                auth_host: self.config.auth_host.clone(),
+            },
+        })
     }
 }

@@ -1,0 +1,108 @@
+admin:
+  accessLogPath: /dev/null
+  address:
+    socketAddress:
+      address: 0.0.0.0
+      portValue: 19000
+staticResources:
+  clusters:
+  - connectTimeout: 5s
+    dnsLookupFamily: V4_ONLY
+    hosts:
+    - socketAddress:
+        address: httpbin.org
+        ipv4Compat: true
+        portValue: 80
+    name: static-cluster-http
+    type: LOGICAL_DNS
+  - connectTimeout: 5s
+    dnsLookupFamily: V4_ONLY
+    loadAssignment:
+      clusterName: static-cluster-https
+      endpoints:
+      - lbEndpoints:
+        - endpoint:
+            address:
+              socketAddress:
+                address: httpbin.org
+                portValue: 443
+    name: static-cluster-https
+    transportSocket:
+      name: envoy.transport_sockets.tls
+      typedConfig:
+        '@type': type.googleapis.com/envoy.api.v2.auth.UpstreamTlsContext
+        sni: httpbin.org
+    type: LOGICAL_DNS
+  - connectTimeout: 5s
+    dnsLookupFamily: V4_ONLY
+    loadAssignment:
+      clusterName: auth-cluster
+      endpoints:
+      - lbEndpoints:
+        - endpoint:
+            address:
+              socketAddress:
+                address: www.google.com
+                portValue: 443
+    name: auth-cluster
+    transportSocket:
+      name: envoy.transport_sockets.tls
+      typedConfig:
+        '@type': type.googleapis.com/envoy.api.v2.auth.UpstreamTlsContext
+        sni: www.google.com
+    type: LOGICAL_DNS
+  listeners:
+  - address:
+      socketAddress:
+        address: 0.0.0.0
+        portValue: 8080
+    filterChains:
+    - filters:
+      - config:
+          httpFilters:
+          - config:
+              config:
+                name: filter-id
+                rootId: root_id
+                configuration:
+                    "@type": "type.googleapis.com/google.protobuf.StringValue"
+                    value: |
+                      {
+                        "name": "plugin configuration",
+                        "value": "some value"
+                      }   
+                vmConfig:
+                  code:
+                    local:
+                      filename: /home/agung/.wasme/store/247947017e9066084dd26e3bb1e708f7/filter.wasm
+                  runtime: envoy.wasm.runtime.v8
+                  vmId: filter-id
+            name: envoy.filters.http.wasm
+          - name: envoy.router
+          routeConfig:
+            name: test
+            virtualHosts:
+            - domains:
+              - '*'
+              name: httpbin.com
+              routes:
+              - match:
+                  path: /google/https
+                route:
+                  autoHostRewrite: true
+                  cluster: auth-cluster
+                  prefixRewrite: /
+              - match:
+                  path: /bin/https
+                route:
+                  autoHostRewrite: true
+                  cluster: static-cluster-https
+                  prefixRewrite: /
+              - match:
+                  path: /
+                route:
+                  autoHostRewrite: true
+                  cluster: static-cluster-http
+          statPrefix: ingress_http
+        name: envoy.http_connection_manager
+    name: listener_0

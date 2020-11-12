@@ -20,9 +20,12 @@ deploy-envoy:
 ifdef $(DEBUG)
 	wasme deploy envoy $(NAME):$(TAG) --envoy-image=$(ENVOY_IMAGE) --bootstrap=envoy-bootstrap.yaml --envoy-run-args="--log-level debug"
 else
-	wasme deploy envoy $(NAME):$(TAG) --envoy-image=$(ENVOY_IMAGE) --bootstrap=envoy-bootstrap.yaml
+	wasme deploy envoy $(NAME):$(TAG) --envoy-image=$(ENVOY_IMAGE) --bootstrap=envoy-bootstrap.yaml --config "agung-config" --id filter-id  --out test.yaml
+
 endif
 
+test:
+	wasme deploy envoy $(NAME):$(TAG) --envoy-image=$(ENVOY_IMAGE) --bootstrap=test.yaml
 # to check envoy version in istio image
 check-envoy:
 	docker run --entrypoint "/usr/local/bin/envoy" $(ENVOY_IMAGE) --version
