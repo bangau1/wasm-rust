@@ -1,4 +1,5 @@
 # envoy-bootstrap.yml
+# see: https://www.envoyproxy.io/docs/envoy/latest/api-v2/http_routes/http_routes
 admin:
   access_log_path: /dev/null
   address:

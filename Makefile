@@ -18,5 +18,6 @@ build-wasm:
 deploy-envoy:
 	wasme deploy envoy $(NAME):$(TAG) --envoy-image=$(ENVOY_IMAGE) --bootstrap=envoy-bootstrap.yaml --envoy-run-args="--log-level debug"
 
+# to check envoy version in istio image
 check-envoy:
 	docker run --entrypoint "/usr/local/bin/envoy" $(ENVOY_IMAGE) --version
