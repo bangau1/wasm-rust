@@ -15,8 +15,13 @@ build-wasm:
 	cargo build --target wasm32-unknown-unknown --release
 	wasme build precompiled target/wasm32-unknown-unknown/release/$(BUILD_NAME).wasm --tag $(NAME):$(TAG)
 
+DEBUG=
 deploy-envoy:
+ifdef $(DEBUG)
 	wasme deploy envoy $(NAME):$(TAG) --envoy-image=$(ENVOY_IMAGE) --bootstrap=envoy-bootstrap.yaml --envoy-run-args="--log-level debug"
+else
+	wasme deploy envoy $(NAME):$(TAG) --envoy-image=$(ENVOY_IMAGE) --bootstrap=envoy-bootstrap.yaml
+endif
 
 # to check envoy version in istio image
 check-envoy:
