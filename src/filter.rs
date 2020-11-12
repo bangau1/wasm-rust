@@ -11,14 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-use log::debug;
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
+use std::collections::HashMap;
+use std::str;
 use std::time::Duration;
 
 #[no_mangle]
 pub fn _start() {
+    proxy_wasm::set_log_level(proxy_wasm::types::LogLevel::Trace);
     proxy_wasm::set_http_context(|_, _| -> Box<dyn HttpContext> { Box::new(HttpAuth) });
 }
 
@@ -26,49 +27,74 @@ struct HttpAuth;
 
 impl HttpAuth {
     fn fail(&mut self) {
-      debug!("auth: allowed");
-      self.send_http_response(403, vec![], Some(b"not authorized"));
+        log::info!("auth: not allowed");
+        self.send_http_response(403, vec![], Some(b"not authorized"));
     }
 }
 
 // Implement http functions related to this request.
 // This is the core of the filter code.
 impl HttpContext for HttpAuth {
-
     // This callback will be invoked when request headers arrive
     fn on_http_request_headers(&mut self, _: usize) -> Action {
         // get all the request headers
         let headers = self.get_http_request_headers();
+        log::info!("\nRequest Headers: \n{:?}\n\n", headers);
         // transform them from Vec<(String,String)> to Vec<(&str,&str)>; as dispatch_http_call needs
         // Vec<(&str,&str)>.
-        let ref_headers : Vec<(&str,&str)> = headers.iter().map(|(ref k,ref v)|(k.as_str(),v.as_str())).collect();
+        let ref_headers: Vec<(&str, &str)> = headers
+            .iter()
+            .map(|(ref k, ref v)| (k.as_str(), v.as_str()))
+            .collect();
 
         // Dispatch a call to the auth-cluster. Here we assume that envoy's config has a cluster
         // named auth-cluster. We send the auth cluster all our headers, so it has context to
         // perform auth decisions.
         let res = self.dispatch_http_call(
             "auth-cluster", // cluster name
-            ref_headers, // headers
-            None, // no body
-            vec![], // no trailers
+            vec![
+                (":method", "GET"),
+                (":path", "/"),
+                (":authority", "www.google.com"),
+            ], // headers
+            None,           // no body
+            vec![],         // no trailers
             Duration::from_secs(1), // one second timeout
         );
 
         // If dispatch reutrn an error, fail the request.
         match res {
-            Err(_) =>{
+            Err(status @ _) => {
+                log::info!("Error when dispatch http call: {:?}", status);
                 self.fail();
             }
-            Ok(_)  => {}
+            Ok(_) => {}
         }
 
         // the dispatch call is asynchronous. This means it returns immediatly, while the request
-        // happens in the background. When the response arrives `on_http_call_response` will be 
+        // happens in the background. When the response arrives `on_http_call_response` will be
         // called. In the mean time, we need to pause the request, so it doesn't continue upstream.
         Action::Pause
     }
 
     fn on_http_response_headers(&mut self, _: usize) -> Action {
+        //retrieve body response
+        log::info!(
+            "response from upstream server: \n{:?}\n",
+            self.get_http_response_headers()
+        );
+
+        //retrieve body response
+        log::info!(
+            "request headers to upstream server: \n{:?}\n",
+            self.get_http_request_headers()
+        );
+
+        //retrieve body response
+        log::info!(
+            "trailer headers to upstream server: \n{:?}\n",
+            self.get_http_response_trailers()
+        );
         // Add a header on the response.
         self.set_http_response_header("Hello", Some("world"));
         Action::Continue
@@ -76,11 +102,31 @@ impl HttpContext for HttpAuth {
 }
 
 impl Context for HttpAuth {
-    fn on_http_call_response(&mut self, _ : u32, header_size: usize, _: usize, _: usize) {
+    fn on_http_call_response(
+        &mut self,
+        _token_id: u32,
+        _num_headers: usize,
+        _body_size: usize,
+        _num_trailers: usize,
+    ) {
         // We have a response to the http call!
+        log::info!("We got response back from auth-cluster");
+        // log::info!("headers: {:?}", self.get_http_call_response_headers());
+        // let body = self.get_http_call_response_body(0, _body_size);
+        let headers = self.get_http_call_response_headers();
+        let mut header_maps = HashMap::new();
+        for (key, value) in headers {
+            header_maps.insert(key, value);
+        }
+
+        // match body {
+        //     Some(p) => log::info!("{:?}", str::from_utf8(&p)),
+        //     None => log::info!("empty body"),
+        // }
 
         // if we have no headers, it means the http call failed. Fail the incoming request as well.
-        if header_size == 0 {
+        if _num_headers == 0 {
+            log::info!("response header size is zero!");
             self.fail();
             return;
         }
@@ -88,12 +134,12 @@ impl Context for HttpAuth {
         // Check if the auth server returned "200", if so call `resume_http_request` so request is
         // sent upstream.
         // Otherwise, fail the incoming request.
-        match self.get_http_request_header(":status") {
-            Some(ref status) if status == "200"  => {
+        match header_maps.get(":status") {
+            Some(status) if status == "200" => {
                 self.resume_http_request();
             }
             _ => {
-                debug!("auth: not authorized");
+                log::info!("auth: not authorized");
                 self.fail();
             }
         }

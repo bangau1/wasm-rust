@@ -1,0 +1,93 @@
+# envoy-bootstrap.yml
+admin:
+  access_log_path: /dev/null
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 19000
+static_resources:
+  listeners:
+    - name: listener_0
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 8080 }
+      filter_chains:
+        - filters:
+            - name: envoy.http_connection_manager
+              config:
+                codec_type: AUTO
+                stat_prefix: ingress_http
+                route_config:
+                  name: test
+                  virtual_hosts:
+                    - name: httpbin.com
+                      domains: ["*"]
+                      routes:
+                        # ordering matters!
+                        - match: { prefix: "/google/https" }
+                          route:
+                            cluster: auth-cluster
+                            auto_host_rewrite: true
+                            prefix_rewrite: "/"
+                        - match: { prefix: "/bin/https" }
+                          route:
+                            cluster: static-cluster-http
+                            auto_host_rewrite: true
+                            prefix_rewrite: "/"
+                        - match: { prefix: "/" }
+                          route:
+                            cluster: static-cluster-http
+                            auto_host_rewrite: true
+                http_filters:
+                  - name: envoy.router
+  clusters:
+    - name: static-cluster-http
+      connect_timeout: 0.25s
+      type: LOGICAL_DNS
+      lb_policy: ROUND_ROBIN
+      dns_lookup_family: V4_ONLY
+      hosts:
+        - socket_address:
+            address: httpbin.org
+            port_value: 80
+            ipv4_compat: true
+    - name: static-cluster-https
+      connect_timeout: 0.25s
+      type: LOGICAL_DNS
+      # Comment out the following line to test on v6 networks
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: static-cluster-https
+        endpoints:
+        - lb_endpoints:
+          - endpoint:
+              address:
+                socket_address:
+                  address: httpbin.org
+                  port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.api.v2.auth.UpstreamTlsContext
+          sni: httpbin.org
+    # got it from: https://github.com/envoyproxy/envoy/blob/v1.15.1/configs/google_com_proxy.v2.yaml
+    - name: auth-cluster
+      connect_timeout: 0.25s
+      type: LOGICAL_DNS
+      # Comment out the following line to test on v6 networks
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: auth-cluster
+        endpoints:
+        - lb_endpoints:
+          - endpoint:
+              address:
+                socket_address:
+                  address: www.google.com
+                  port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.api.v2.auth.UpstreamTlsContext
+          sni: www.google.com
