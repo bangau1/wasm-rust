@@ -78,23 +78,11 @@ impl HttpContext for HttpAuth {
     }
 
     fn on_http_response_headers(&mut self, _: usize) -> Action {
-        //retrieve body response
         log::info!(
-            "response from upstream server: \n{:?}\n",
+            "response_header from upstream server: \n{:?}\n",
             self.get_http_response_headers()
         );
 
-        //retrieve body response
-        log::info!(
-            "request headers to upstream server: \n{:?}\n",
-            self.get_http_request_headers()
-        );
-
-        //retrieve body response
-        log::info!(
-            "trailer headers to upstream server: \n{:?}\n",
-            self.get_http_response_trailers()
-        );
         // Add a header on the response.
         self.set_http_response_header("Hello", Some("world"));
         Action::Continue
