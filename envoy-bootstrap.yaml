@@ -24,17 +24,17 @@ static_resources:
                       domains: ["*"]
                       routes:
                         # ordering matters!
-                        - match: { prefix: "/google/https" }
+                        - match: { path: "/google/https" }
                           route:
                             cluster: auth-cluster
                             auto_host_rewrite: true
                             prefix_rewrite: "/"
-                        - match: { prefix: "/bin/https" }
+                        - match: { path: "/bin/https" }
                           route:
-                            cluster: static-cluster-http
+                            cluster: static-cluster-https
                             auto_host_rewrite: true
                             prefix_rewrite: "/"
-                        - match: { prefix: "/" }
+                        - match: { path: "/" }
                           route:
                             cluster: static-cluster-http
                             auto_host_rewrite: true
@@ -42,7 +42,7 @@ static_resources:
                   - name: envoy.router
   clusters:
     - name: static-cluster-http
-      connect_timeout: 0.25s
+      connect_timeout: 5s
       type: LOGICAL_DNS
       lb_policy: ROUND_ROBIN
       dns_lookup_family: V4_ONLY
@@ -52,7 +52,7 @@ static_resources:
             port_value: 80
             ipv4_compat: true
     - name: static-cluster-https
-      connect_timeout: 0.25s
+      connect_timeout: 5s
       type: LOGICAL_DNS
       # Comment out the following line to test on v6 networks
       dns_lookup_family: V4_ONLY
@@ -71,9 +71,10 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.api.v2.auth.UpstreamTlsContext
           sni: httpbin.org
+
     # got it from: https://github.com/envoyproxy/envoy/blob/v1.15.1/configs/google_com_proxy.v2.yaml
     - name: auth-cluster
-      connect_timeout: 0.25s
+      connect_timeout: 5s
       type: LOGICAL_DNS
       # Comment out the following line to test on v6 networks
       dns_lookup_family: V4_ONLY
